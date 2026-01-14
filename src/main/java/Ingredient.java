@@ -10,6 +10,10 @@ public class Ingredient {
     public Ingredient() {
     }
 
+    public Ingredient(Integer id) {
+        this.id = id;
+    }
+
     public Ingredient(Integer id, String name, CategoryEnum category, Double price, Dish dish) {
         this.id = id;
         this.name = name;

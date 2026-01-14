@@ -1,9 +1,7 @@
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class DataRetriever {
     Dish findDishById(Integer id) {
@@ -30,6 +28,101 @@ public class DataRetriever {
             throw new RuntimeException("Dish not found " + id);
         } catch (SQLException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    Dish saveDish(Dish toSave) {
+        String upsertDishSql = """
+                    INSERT INTO dish (id, name, dish_type)
+                    VALUES (?, ?, ?::dish_type)
+                    ON CONFLICT (id) DO UPDATE
+                    SET name = EXCLUDED.name,
+                        dish_type = EXCLUDED.dish_type
+                    RETURNING id
+                """;
+
+        try (Connection conn = new DBConnection().getConnection()) {
+            conn.setAutoCommit(false);
+            Integer dishId;
+            try (PreparedStatement ps = conn.prepareStatement(upsertDishSql)) {
+                if (toSave.getId() != null) {
+                    ps.setInt(1, toSave.getId());
+                } else {
+                    ps.setNull(1, Types.INTEGER);
+                }
+                ps.setString(2, toSave.getName());
+                ps.setString(3, toSave.getDishType().name());
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    dishId = rs.getInt(1);
+                }
+            }
+
+            List<Ingredient> newIngredients = toSave.getIngredients();
+            detachIngredients(conn, dishId, newIngredients);
+            attachIngredients(conn, dishId, newIngredients);
+
+            conn.commit();
+            return findDishById(dishId);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void detachIngredients(Connection conn, Integer dishId, List<Ingredient> ingredients)
+            throws SQLException {
+        if (ingredients == null || ingredients.isEmpty()) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE ingredient SET id_dish = NULL WHERE id_dish = ?")) {
+                ps.setInt(1, dishId);
+                ps.executeUpdate();
+            }
+            return;
+        }
+
+        String baseSql = """
+                    UPDATE ingredient
+                    SET id_dish = NULL
+                    WHERE id_dish = ? AND id NOT IN (%s)
+                """;
+
+        String inClause = ingredients.stream()
+                .map(i -> "?")
+                .collect(Collectors.joining(","));
+
+        String sql = String.format(baseSql, inClause);
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, dishId);
+            int index = 2;
+            for (Ingredient ingredient : ingredients) {
+                ps.setInt(index++, ingredient.getId());
+            }
+            ps.executeUpdate();
+        }
+    }
+
+    private void attachIngredients(Connection conn, Integer dishId, List<Ingredient> ingredients)
+            throws SQLException {
+
+        if (ingredients == null || ingredients.isEmpty()) {
+            return;
+        }
+
+        String attachSql = """
+                    UPDATE ingredient
+                    SET id_dish = ?
+                    WHERE id = ?
+                """;
+
+        try (PreparedStatement ps = conn.prepareStatement(attachSql)) {
+            for (Ingredient ingredient : ingredients) {
+                ps.setInt(1, dishId);
+                ps.setInt(2, ingredient.getId());
+                ps.addBatch(); // Can be substitute ps.executeUpdate() but bad performance
+            }
+            ps.executeBatch();
         }
     }
 
