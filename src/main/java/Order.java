@@ -7,6 +7,7 @@ public class Order {
     private String reference;
     private Instant creationDatetime;
     private List<DishOrder> dishOrderList;
+    private TableOrder tableOrder;
 
     public Integer getId() {
         return id;
@@ -38,6 +39,14 @@ public class Order {
 
     public void setDishOrderList(List<DishOrder> dishOrderList) {
         this.dishOrderList = dishOrderList;
+    }
+
+    public TableOrder getTableOrder() {
+        return tableOrder;
+    }
+
+    public void setTableOrder(TableOrder tableOrder) {
+        this.tableOrder = tableOrder;
     }
 
     @Override
